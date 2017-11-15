@@ -114,10 +114,10 @@ class SVN {
     }
 }
 exports.SVN = SVN;
-async function status(dir) {
+async function status(cwd) {
     var data = await execute('status', {
         xml: true,
-        dir
+        cwd
     });
     var target = data.target;
     var ret = {
@@ -142,50 +142,50 @@ async function status(dir) {
     return ret;
 }
 exports.status = status;
-function resolve(items, dir) {
+function resolve(items, cwd) {
     if (items.length > 0) {
         return execute('resolve', {
             params: items,
             accept: 'mine-full',
-            dir
+            cwd
         });
     }
 }
 exports.resolve = resolve;
-function add(items, dir) {
+function add(items, cwd) {
     return execute('add', {
         params: items,
-        dir
+        cwd
     });
 }
 exports.add = add;
-function update(dir) {
+function update(cwd) {
     return execute('update', {
         accept: 'mine-full',
-        dir
+        cwd
     });
 }
 exports.update = update;
-function del(items, dir) {
+function del(items, cwd) {
     if (items.length > 0) {
         return execute('delete', {
             params: items,
-            dir
+            cwd
         });
     }
 }
 exports.del = del;
-function commit(msg = '~~~代码更新~~~', dir) {
+function commit(msg = '~~~代码更新~~~', cwd) {
     return execute('commit', {
         params: [`-m "${msg}"`],
-        dir
+        cwd
     });
 }
 exports.commit = commit;
-function merge(revisions, dir) {
+function merge(revisions, cwd) {
     return execute('merge', {
         params: revisions,
-        dir
+        cwd
     });
 }
 exports.merge = merge;

@@ -129,10 +129,10 @@ interface IStatus {
   modifieds: string[]
 }
 
-export async function status(dir: string) {
+export async function status(cwd: string) {
   var data: any = await execute('status', {
     xml: true,
-    dir
+    cwd
   });
   var target = data.target;
   var ret: IStatus = {
@@ -157,50 +157,50 @@ export async function status(dir: string) {
   return ret;
 }
 
-export function resolve(items:string[], dir:string) {
+export function resolve(items:string[], cwd:string) {
   if (items.length > 0) {
     return execute('resolve', {
       params: items,
       accept: 'mine-full',
-      dir
+      cwd
     });
   }
 }
 
-export function add(items:string[], dir:string) {
+export function add(items:string[], cwd:string) {
   return execute('add', {
     params: items,
-    dir
+    cwd
   });
 }
 
-export function update(dir:string) {
+export function update(cwd:string) {
   return execute('update', {
     accept: 'mine-full',
-    dir
+    cwd
   });
 }
 
-export function del(items:string[], dir:string) {
+export function del(items:string[], cwd:string) {
   if (items.length > 0) {
     return execute('delete', {
       params: items,
-      dir
+      cwd
     })
   }
 }
 
-export function commit(msg: string = '~~~代码更新~~~', dir:string) {
+export function commit(msg: string = '~~~代码更新~~~', cwd:string) {
   return execute('commit', {
     params: [`-m "${msg}"`],
-    dir
+    cwd
   });
 }
 
-export function merge(revisions:string[], dir:string) {
+export function merge(revisions:string[], cwd:string) {
   return execute('merge', {
     params: revisions,
-    dir
+    cwd
   })
 }
 
