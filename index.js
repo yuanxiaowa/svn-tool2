@@ -153,6 +153,7 @@ class SVN {
         }));
     }
 }
+exports.SVN = SVN;
 var pnames = ['trunk', 'branches', 'tags'];
 function getProjectDir(url, projectName) {
     var i = 0;

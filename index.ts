@@ -73,7 +73,7 @@ var isMissingEntry = isType('missing');
 var isModifiedEntry = isType('modified');
 var isConflictEntry = (item: any) => item['wc-status'].$['tree-conflicted'] === 'true';
 
-class SVN {
+export class SVN {
   adds: string[] = []
   deleteds: string[] = []
   conflicts: string[] = []
