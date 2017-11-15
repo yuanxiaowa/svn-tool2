@@ -65,13 +65,13 @@ function execute(name: string, args: any = {}) {
   })
 }
 
-var getEntryPath = (item: any) => item.$.path;
-var isType = (type: string) => (item: any) => item['wc-status'].$.item === type;
+var getEntryPath = (item: any): string => item.path;
+var isType = (type: string) => (item: any) => item.type === type;
 var isDeletedEntry = isType('deleted');
 var isNewEntry = isType('unversioned');
 var isMissingEntry = isType('missing');
 var isModifiedEntry = isType('modified');
-var isConflictEntry = (item: any) => item['wc-status'].$['tree-conflicted'] === 'true';
+var isConflictEntry = (item: any) => item.hasConflict;
 
 export class SVN {
   adds: string[]
@@ -83,12 +83,12 @@ export class SVN {
   constructor(public dir: string) { }
   async status() {
     var data = await status(this.dir);
-    this.hasChanges = data.hasChanges;
-    this.conflicts = data.conflicts;
-    this.deleteds = data.deleteds;
-    this.adds = data.adds;
-    this.missings = data.missings;
-    this.modifieds = data.modifieds;
+    this.hasChanges = data.length > 0;
+    this.conflicts = data.filter(isConflictEntry).map(getEntryPath);
+    this.deleteds = data.filter(isDeletedEntry).map(getEntryPath);
+    this.adds = data.filter(isNewEntry).map(getEntryPath);
+    this.missings = data.filter(isMissingEntry).map(getEntryPath);
+    this.modifieds = data.filter(isModifiedEntry).map(getEntryPath);
   }
   info() {
     return info(this.dir);
@@ -120,44 +120,57 @@ export class SVN {
   }
 }
 
-interface IStatus {
-  hasChanges: Boolean
-  conflicts: string[]
-  deleteds: string[]
-  adds: string[]
-  missings: string[]
-  modifieds: string[]
+enum StatusType {
+  unversioned,
+  deleted,
+  missing,
+  modified
 }
-
+interface StatusItem {
+  type: StatusType
+  path: string
+  revision: number
+  hasConflict: boolean
+  commit?: {
+    revision: number
+    author: string
+    date: string
+  }
+}
 export async function status(cwd: string) {
   var data: any = await execute('status', {
     xml: true,
     cwd
   });
   var target = data.target;
-  var ret: IStatus = {
-    hasChanges: !!target.entry,
-    conflicts: [],
-    deleteds: [],
-    adds: [],
-    missings: [],
-    modifieds: []
-  };
+  var ret: StatusItem[] = [];
   if (target.entry) {
     let entry: any[] = target.entry;
     if (!Array.isArray(entry)) {
       entry = [entry];
     }
-    ret.conflicts = entry.filter(isConflictEntry).map(getEntryPath);
-    ret.deleteds = entry.filter(isDeletedEntry).map(getEntryPath);
-    ret.adds = entry.filter(isNewEntry).map(getEntryPath);
-    ret.missings = entry.filter(isMissingEntry).map(getEntryPath);
-    ret.modifieds = entry.filter(isModifiedEntry).map(getEntryPath);
+    ret = entry.map(item => {
+      var s = item['wc-status'];
+      var data: StatusItem = {
+        type: s.$.item,
+        path: item.$.path,
+        revision: +s.$.revision,
+        hasConflict: !!s.$['tree-conflicted']
+      };
+      if (s.commit) {
+        data.commit = {
+          revision: s.commit.$.revision,
+          author: s.commit.author,
+          date: s.commit.date
+        };
+      }
+      return data;
+    });
   }
   return ret;
 }
 
-export function resolve(items:string[], cwd:string) {
+export function resolve(items: string[], cwd: string) {
   if (items.length > 0) {
     return execute('resolve', {
       params: items,
@@ -167,21 +180,21 @@ export function resolve(items:string[], cwd:string) {
   }
 }
 
-export function add(items:string[], cwd:string) {
+export function add(items: string[], cwd: string) {
   return execute('add', {
     params: items,
     cwd
   });
 }
 
-export function update(cwd:string) {
+export function update(cwd: string) {
   return execute('update', {
     accept: 'mine-full',
     cwd
   });
 }
 
-export function del(items:string[], cwd:string) {
+export function del(items: string[], cwd: string) {
   if (items.length > 0) {
     return execute('delete', {
       params: items,
@@ -190,14 +203,14 @@ export function del(items:string[], cwd:string) {
   }
 }
 
-export function commit(msg: string = '~~~代码更新~~~', cwd:string) {
+export function commit(msg: string = '~~~代码更新~~~', cwd: string) {
   return execute('commit', {
     params: [`-m "${msg}"`],
     cwd
   });
 }
 
-export function merge(revisions:string[], cwd:string) {
+export function merge(revisions: string[], cwd: string) {
   return execute('merge', {
     params: revisions,
     cwd

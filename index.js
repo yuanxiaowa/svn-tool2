@@ -64,25 +64,25 @@ function execute(name, args = {}) {
         rStream(ps.stderr, false, reject);
     });
 }
-var getEntryPath = (item) => item.$.path;
-var isType = (type) => (item) => item['wc-status'].$.item === type;
+var getEntryPath = (item) => item.path;
+var isType = (type) => (item) => item.type === type;
 var isDeletedEntry = isType('deleted');
 var isNewEntry = isType('unversioned');
 var isMissingEntry = isType('missing');
 var isModifiedEntry = isType('modified');
-var isConflictEntry = (item) => item['wc-status'].$['tree-conflicted'] === 'true';
+var isConflictEntry = (item) => item.hasConflict;
 class SVN {
     constructor(dir) {
         this.dir = dir;
     }
     async status() {
         var data = await status(this.dir);
-        this.hasChanges = data.hasChanges;
-        this.conflicts = data.conflicts;
-        this.deleteds = data.deleteds;
-        this.adds = data.adds;
-        this.missings = data.missings;
-        this.modifieds = data.modifieds;
+        this.hasChanges = data.length > 0;
+        this.conflicts = data.filter(isConflictEntry).map(getEntryPath);
+        this.deleteds = data.filter(isDeletedEntry).map(getEntryPath);
+        this.adds = data.filter(isNewEntry).map(getEntryPath);
+        this.missings = data.filter(isMissingEntry).map(getEntryPath);
+        this.modifieds = data.filter(isModifiedEntry).map(getEntryPath);
     }
     info() {
         return info(this.dir);
@@ -114,30 +114,42 @@ class SVN {
     }
 }
 exports.SVN = SVN;
+var StatusType;
+(function (StatusType) {
+    StatusType[StatusType["unversioned"] = 0] = "unversioned";
+    StatusType[StatusType["deleted"] = 1] = "deleted";
+    StatusType[StatusType["missing"] = 2] = "missing";
+    StatusType[StatusType["modified"] = 3] = "modified";
+})(StatusType || (StatusType = {}));
 async function status(cwd) {
     var data = await execute('status', {
         xml: true,
         cwd
     });
     var target = data.target;
-    var ret = {
-        hasChanges: !!target.entry,
-        conflicts: [],
-        deleteds: [],
-        adds: [],
-        missings: [],
-        modifieds: []
-    };
+    var ret = [];
     if (target.entry) {
         let entry = target.entry;
         if (!Array.isArray(entry)) {
             entry = [entry];
         }
-        ret.conflicts = entry.filter(isConflictEntry).map(getEntryPath);
-        ret.deleteds = entry.filter(isDeletedEntry).map(getEntryPath);
-        ret.adds = entry.filter(isNewEntry).map(getEntryPath);
-        ret.missings = entry.filter(isMissingEntry).map(getEntryPath);
-        ret.modifieds = entry.filter(isModifiedEntry).map(getEntryPath);
+        ret = entry.map(item => {
+            var s = item['wc-status'];
+            var data = {
+                type: s.$.item,
+                path: item.$.path,
+                revision: +s.$.revision,
+                hasConflict: !!s.$['tree-conflicted']
+            };
+            if (s.commit) {
+                data.commit = {
+                    revision: s.commit.$.revision,
+                    author: s.commit.author,
+                    date: s.commit.date
+                };
+            }
+            return data;
+        });
     }
     return ret;
 }
