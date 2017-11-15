@@ -133,11 +133,11 @@ async function status(cwd) {
         if (!Array.isArray(entry)) {
             entry = [entry];
         }
-        ret.conflicts = entry.map(isConflictEntry).map(getEntryPath);
-        ret.deleteds = entry.map(isDeletedEntry).map(getEntryPath);
-        ret.adds = entry.map(isNewEntry).map(getEntryPath);
-        ret.missings = entry.map(isMissingEntry).map(getEntryPath);
-        ret.modifieds = entry.map(isModifiedEntry).map(getEntryPath);
+        ret.conflicts = entry.filter(isConflictEntry).map(getEntryPath);
+        ret.deleteds = entry.filter(isDeletedEntry).map(getEntryPath);
+        ret.adds = entry.filter(isNewEntry).map(getEntryPath);
+        ret.missings = entry.filter(isMissingEntry).map(getEntryPath);
+        ret.modifieds = entry.filter(isModifiedEntry).map(getEntryPath);
     }
     return ret;
 }
