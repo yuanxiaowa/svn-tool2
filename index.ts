@@ -74,34 +74,21 @@ var isModifiedEntry = isType('modified');
 var isConflictEntry = (item: any) => item['wc-status'].$['tree-conflicted'] === 'true';
 
 export class SVN {
-  adds: string[] = []
-  deleteds: string[] = []
-  conflicts: string[] = []
-  missings: string[] = []
-  modifieds: string[] = []
+  adds: string[]
+  deleteds: string[]
+  conflicts: string[]
+  missings: string[]
+  modifieds: string[]
   hasChanges: Boolean
   constructor(public dir: string) { }
-  getOpts(opts: any = {}) {
-    opts.cwd = this.dir
-    return opts;
-  }
   async status() {
-    var data: any = await execute('status', this.getOpts({
-      xml: true
-    }));
-    var target = data.target;
-    if (target.entry) {
-      let entry: any[] = target.entry;
-      this.hasChanges = true;
-      if (!Array.isArray(entry)) {
-        entry = [entry];
-      }
-      this.conflicts = entry.map(isConflictEntry).map(getEntryPath);
-      this.deleteds = entry.map(isDeletedEntry).map(getEntryPath);
-      this.adds = entry.map(isNewEntry).map(getEntryPath);
-      this.missings = entry.map(isMissingEntry).map(getEntryPath);
-      this.modifieds = entry.map(isModifiedEntry).map(getEntryPath);
-    }
+    var data = await status(this.dir);
+    this.hasChanges = data.hasChanges;
+    this.conflicts = data.conflicts;
+    this.deleteds = data.deleteds;
+    this.adds = data.adds;
+    this.missings = data.missings;
+    this.modifieds = data.modifieds;
   }
   info() {
     return info(this.dir);
@@ -110,49 +97,111 @@ export class SVN {
     return log(this.dir);
   }
   resolve() {
-    if (this.conflicts.length === 0) {
-      return;
-    }
-    return execute('resolve', this.getOpts({
-      params: this.conflicts,
-      accept: 'mine-full'
-    }));
+    return resolve(this.conflicts, this.dir);
   }
   add() {
-    if (this.adds.length === 0) {
-      return;
-    }
-    return execute('add', this.getOpts({
-      params: this.adds
-    }));
+    return add(this.adds, this.dir);
   }
   update() {
-    return execute('update', this.getOpts({
-      accept: 'mine-full'
-    }));
+    return update(this.dir);
   }
   del() {
     var items = this.deleteds.concat(this.missings);
-    if (items.length === 0) {
-      return;
-    }
-    return execute('delete', this.getOpts({
-      params: items
-    }))
+    return del(items, this.dir);
   }
-  commit(msg: string = '~~~代码更新~~~') {
+  commit(msg: string) {
     if (!this.hasChanges) {
       return;
     }
-    return execute('commit', this.getOpts({
-      params: [`-m "${msg}"`]
-    }));
+    return commit(msg, this.dir);
   }
   merge(revisions: string[]) {
-    return execute('merge', this.getOpts({
-      params: revisions
-    }))
+    return merge(revisions, this.dir);
   }
+}
+
+interface IStatus {
+  hasChanges: Boolean
+  conflicts: string[]
+  deleteds: string[]
+  adds: string[]
+  missings: string[]
+  modifieds: string[]
+}
+
+export async function status(dir: string) {
+  var data: any = await execute('status', {
+    xml: true,
+    dir
+  });
+  var target = data.target;
+  var ret: IStatus = {
+    hasChanges: !!target.entry,
+    conflicts: [],
+    deleteds: [],
+    adds: [],
+    missings: [],
+    modifieds: []
+  };
+  if (target.entry) {
+    let entry: any[] = target.entry;
+    if (!Array.isArray(entry)) {
+      entry = [entry];
+    }
+    ret.conflicts = entry.map(isConflictEntry).map(getEntryPath);
+    ret.deleteds = entry.map(isDeletedEntry).map(getEntryPath);
+    ret.adds = entry.map(isNewEntry).map(getEntryPath);
+    ret.missings = entry.map(isMissingEntry).map(getEntryPath);
+    ret.modifieds = entry.map(isModifiedEntry).map(getEntryPath);
+  }
+  return ret;
+}
+
+export function resolve(items:string[], dir:string) {
+  if (items.length > 0) {
+    return execute('resolve', {
+      params: items,
+      accept: 'mine-full',
+      dir
+    });
+  }
+}
+
+export function add(items:string[], dir:string) {
+  return execute('add', {
+    params: items,
+    dir
+  });
+}
+
+export function update(dir:string) {
+  return execute('update', {
+    accept: 'mine-full',
+    dir
+  });
+}
+
+export function del(items:string[], dir:string) {
+  if (items.length > 0) {
+    return execute('delete', {
+      params: items,
+      dir
+    })
+  }
+}
+
+export function commit(msg: string = '~~~代码更新~~~', dir:string) {
+  return execute('commit', {
+    params: [`-m "${msg}"`],
+    dir
+  });
+}
+
+export function merge(revisions:string[], dir:string) {
+  return execute('merge', {
+    params: revisions,
+    dir
+  })
 }
 
 var pnames = ['trunk', 'branches', 'tags'];
