@@ -189,9 +189,13 @@ function del(items, cwd) {
     }
 }
 exports.del = del;
-function commit(msg = '~~~代码更新~~~', cwd) {
+function commit(msg = '~~~代码更新~~~', cwd, files) {
+    var params = [`-m "${msg}"`];
+    if (files && files.length > 0) {
+        params.push(...files);
+    }
     return execute('commit', {
-        params: [`-m "${msg}"`],
+        params,
         cwd
     });
 }
@@ -213,7 +217,6 @@ function getProjectDir(url, projectName) {
         for (let name of pnames) {
             i = url.indexOf('/' + name + '/');
             if (i > -1) {
-                i += name.length + 1;
                 break;
             }
         }
@@ -239,9 +242,13 @@ function ls(url) {
     })));
 }
 exports.ls = ls;
-function log(url) {
+function log(url, limit) {
+    var params = [url];
+    if (limit) {
+        params.push(`-l ${limit}`);
+    }
     return execute('log', {
-        params: [url],
+        params,
         xml: true
     }).then((data) => data.logentry.map((entry) => ({
         revision: entry.$.revision,

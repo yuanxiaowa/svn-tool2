@@ -205,9 +205,13 @@ export function del(items: string[], cwd: string) {
   }
 }
 
-export function commit(msg: string = '~~~代码更新~~~', cwd: string) {
+export function commit(msg: string = '~~~代码更新~~~', cwd: string, files?: string[]) {
+  var params = [`-m "${msg}"`];
+  if (files && files.length > 0) {
+    params.push(...files);
+  }
   return execute('commit', {
-    params: [`-m "${msg}"`],
+    params,
     cwd
   });
 }
@@ -228,7 +232,6 @@ export function getProjectDir(url: string, projectName?: string) {
     for (let name of pnames) {
       i = url.indexOf('/' + name + '/');
       if (i > -1) {
-        i += name.length + 1;
         break;
       }
     }
@@ -254,9 +257,13 @@ export function ls(url: string) {
   })));
 }
 
-export function log(url: string) {
+export function log(url: string, limit?:number) {
+  var params = [url];
+  if (limit) {
+    params.push(`-l ${limit}`);
+  }
   return execute('log', {
-    params: [url],
+    params,
     xml: true
   }).then((data: any) => data.logentry.map((entry: any) => ({
     revision: entry.$.revision,
