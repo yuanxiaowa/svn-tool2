@@ -17,21 +17,24 @@ function xmlToJSON(xml: string) {
   })
 }
 
-function rStream(stream: Readable, isBuffer: boolean, cb: Function) {
-  var datas: Buffer[] = [];
-  stream.on('data', (chunk: Buffer) => {
-    datas.push(chunk);
-  });
-  stream.on('end', () => {
-    if (isBuffer) {
-      cb(Buffer.concat(datas));
-    } else {
-      cb(datas.join(''));
-    }
-  });
+function rStream(stream: Readable, isBuffer?: boolean):Promise<Buffer|string> {
+  return new Promise((resolve ,reject) => {
+    var datas: Buffer[] = [];
+    stream.on('data', (chunk: Buffer) => {
+      datas.push(chunk);
+    });
+    stream.on('end', () => {
+      if (isBuffer) {
+        resolve(Buffer.concat(datas));
+      } else {
+        resolve(datas.join(''));
+      }
+    });
+    stream.on('error', reject);
+  })
 }
 
-function execute(name: string, args: any = {}) {
+async function execute(name: string, args: any = {}) {
   var params = [name, '--non-interactive', '--trust-server-cert'];
   var opts: any = {};
   if (args.cwd) {
@@ -54,15 +57,14 @@ function execute(name: string, args: any = {}) {
     }
   });
   var ps = spawn('svn', params, opts);
-  return new Promise((resolve, reject) => {
-    rStream(ps.stdout, false, (data: string) => {
-      if (args.xml) {
-        return xmlToJSON(data).then(resolve);
-      }
-      resolve(data);
-    });
-    rStream(ps.stderr, false, reject);
-  })
+  var [a, b] = await Promise.all([rStream(ps.stdout), rStream(ps.stderr)]);
+  var v = a || b;
+  if (v) {
+    if (args.xml) {
+      return xmlToJSON(<string>v);
+    }
+  }
+  return v;
 }
 
 var getEntryPath = (item: any): string => item.path;
