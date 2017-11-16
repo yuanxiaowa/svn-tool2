@@ -16,21 +16,24 @@ function xmlToJSON(xml) {
         });
     });
 }
-function rStream(stream, isBuffer, cb) {
-    var datas = [];
-    stream.on('data', (chunk) => {
-        datas.push(chunk);
-    });
-    stream.on('end', () => {
-        if (isBuffer) {
-            cb(Buffer.concat(datas));
-        }
-        else {
-            cb(datas.join(''));
-        }
+function rStream(stream, isBuffer) {
+    return new Promise((resolve, reject) => {
+        var datas = [];
+        stream.on('data', (chunk) => {
+            datas.push(chunk);
+        });
+        stream.on('end', () => {
+            if (isBuffer) {
+                resolve(Buffer.concat(datas));
+            }
+            else {
+                resolve(datas.join(''));
+            }
+        });
+        stream.on('error', reject);
     });
 }
-function execute(name, args = {}) {
+async function execute(name, args = {}) {
     var params = [name, '--non-interactive', '--trust-server-cert'];
     var opts = {};
     if (args.cwd) {
@@ -54,15 +57,14 @@ function execute(name, args = {}) {
         }
     });
     var ps = child_process_1.spawn('svn', params, opts);
-    return new Promise((resolve, reject) => {
-        rStream(ps.stdout, false, (data) => {
-            if (args.xml) {
-                return xmlToJSON(data).then(resolve);
-            }
-            resolve(data);
-        });
-        rStream(ps.stderr, false, reject);
-    });
+    var [a, b] = await Promise.all([rStream(ps.stdout), rStream(ps.stderr)]);
+    var v = a || b;
+    if (v) {
+        if (args.xml) {
+            return xmlToJSON(v);
+        }
+    }
+    return v;
 }
 var getEntryPath = (item) => item.path;
 var isType = (type) => (item) => item.type === type;
