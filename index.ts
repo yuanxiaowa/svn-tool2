@@ -17,8 +17,8 @@ function xmlToJSON(xml: string) {
   })
 }
 
-function rStream(stream: Readable, isBuffer?: boolean):Promise<Buffer|string> {
-  return new Promise((resolve ,reject) => {
+function rStream(stream: Readable, isBuffer?: boolean): Promise<Buffer | string> {
+  return new Promise((resolve, reject) => {
     var datas: Buffer[] = [];
     stream.on('data', (chunk: Buffer) => {
       datas.push(chunk);
@@ -128,7 +128,11 @@ enum StatusType {
   missing,
   modified
 }
-interface StatusItem {
+class StatusTarget {
+  constructor(public path: string) { }
+  entries?: Entry[]
+}
+class Entry {
   type: StatusType
   path: string
   revision: number
@@ -144,32 +148,38 @@ export async function status(cwd: string) {
     xml: true,
     cwd
   });
-  var target = data.target;
-  var ret: StatusItem[] = [];
-  if (target.entry) {
-    let entry: any[] = target.entry;
-    if (!Array.isArray(entry)) {
-      entry = [entry];
-    }
-    ret = entry.map(item => {
-      var s = item['wc-status'];
-      var data: StatusItem = {
-        type: s.$.item,
-        path: item.$.path,
-        revision: +s.$.revision,
-        hasConflict: !!s.$['tree-conflicted']
-      };
-      if (s.commit) {
-        data.commit = {
-          revision: s.commit.$.revision,
-          author: s.commit.author,
-          date: s.commit.date
-        };
-      }
-      return data;
-    });
+  var items: any[] = data.target;
+  if (!Array.isArray(items)) {
+    items = [items];
   }
-  return ret;
+  var sts: StatusTarget[] = items.map(target => {
+    var ret = new StatusTarget(target.$.path);
+    var entries = target.entry;
+    if (entries) {
+      if (!Array.isArray(entries)) {
+        entries = [entries]
+      }
+      ret.entries = entries.map((item: any) => {
+        var s = item['wc-status'];
+        var data: Entry = {
+          type: s.$.item,
+          path: item.$.path,
+          revision: +s.$.revision,
+          hasConflict: !!s.$['tree-conflicted']
+        };
+        if (s.commit) {
+          data.commit = {
+            revision: s.commit.$.revision,
+            author: s.commit.author,
+            date: s.commit.date
+          };
+        }
+        return data;
+      })
+    }
+    return ret;
+  });
+  return sts
 }
 
 export function resolve(items: string[], cwd: string) {
@@ -257,7 +267,7 @@ export function ls(url: string) {
   })));
 }
 
-export function log(url: string, limit?:number) {
+export function log(url: string, limit?: number) {
   var params = [url];
   if (limit) {
     params.push(`-l ${limit}`);
