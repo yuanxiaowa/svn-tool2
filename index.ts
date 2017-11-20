@@ -59,12 +59,14 @@ async function execute(name: string, args: any = {}) {
   var ps = spawn('svn', params, opts);
   var [a, b] = await Promise.all([rStream(ps.stdout), rStream(ps.stderr)]);
   var v = a || b;
-  if (v) {
+  if (a) {
     if (args.xml) {
-      return xmlToJSON(<string>v);
+      return xmlToJSON(<string>a);
     }
+  } else if (b) {
+    throw b;
   }
-  return v;
+  return a;
 }
 
 var getEntryPath = (item: any): string => item.path;
@@ -137,16 +139,13 @@ class Entry {
   path: string
   revision: number
   hasConflict: boolean
-  commit?: {
-    revision: number
-    author: string
-    date: string
-  }
+  commit?: Commit
 }
-export async function status(cwd: string) {
+export async function status(cwd: string, paths?: string[]) {
   var data: any = await execute('status', {
     xml: true,
-    cwd
+    cwd,
+    params: paths
   });
   var items: any[] = data.target;
   if (!Array.isArray(items)) {
@@ -169,7 +168,7 @@ export async function status(cwd: string) {
         };
         if (s.commit) {
           data.commit = {
-            revision: s.commit.$.revision,
+            revision: +s.commit.$.revision,
             author: s.commit.author,
             date: s.commit.date
           };
@@ -182,53 +181,58 @@ export async function status(cwd: string) {
   return sts
 }
 
-export function resolve(items: string[], cwd: string) {
-  if (items.length > 0) {
-    return execute('resolve', {
-      params: items,
-      accept: 'mine-full',
-      cwd
-    });
-  }
-}
-
-export function add(items: string[], cwd: string) {
-  return execute('add', {
-    params: items,
+export function resolve(cwd: string, files: string[], accept = 'mine-full') {
+  return execute('resolve', {
+    params: files,
+    accept,
     cwd
   });
 }
 
-export function update(cwd: string) {
+export function add(cwd: string, paths: string[]) {
+  return execute('add', {
+    params: paths,
+    cwd
+  });
+}
+
+export function update(cwd: string): Promise<any>;
+export function update(cwd: string, dirs: string[]): Promise<any>;
+export function update(cwd: string, dirs?: string[]) {
   return execute('update', {
     accept: 'mine-full',
-    cwd
+    cwd,
+    params: dirs
   });
 }
 
-export function del(items: string[], cwd: string) {
-  if (items.length > 0) {
-    return execute('delete', {
-      params: items,
-      cwd
-    })
-  }
+export function del(cwd: string, paths: string[]) {
+  return execute('delete', {
+    params: paths,
+    cwd
+  })
 }
 
-export function commit(msg: string = '~~~代码更新~~~', cwd: string, files?: string[]) {
-  var params = [`-m "${msg}"`];
-  if (files && files.length > 0) {
-    params.push(...files);
-  }
+export function commit(cwd: string, msg: string = '~~~代码更新~~~', files: string[]) {
+  var params = [`-m "${msg}"`, ...files];
   return execute('commit', {
     params,
     cwd
   });
 }
 
-export function merge(revisions: string[], cwd: string) {
+export function merge(cwd: string, url: string, revisions: string[]): Promise<any>;
+export function merge(cwd: string, urls: string[]): Promise<any>;
+export function merge(cwd: string, url: string | string[], revisions?: string[]): Promise<any> {
+  var params: string[];
+  if (typeof url === 'string') {
+    params = ['-c', (<string[]>revisions).join(','), url, '.'];
+  } else {
+    url.push('.');
+    params = url;
+  }
   return execute('merge', {
-    params: revisions,
+    params,
     cwd
   })
 }
@@ -249,25 +253,124 @@ export function getProjectDir(url: string, projectName?: string) {
   var dir = url.substring(0, i);
   return dir;
 }
-
-export function info(url: string) {
+class Commit {
+  revision: number
+  author: string
+  date: string
+}
+interface InfoEntry {
+  path: string
+  revision: number
+  url: string
+  relativeUrl: string
+  repository: {
+    root: string
+    uuid: string
+  }
+  wcInfo: {
+    wcrootAbspath: string
+    schedule: string
+    depth: string
+  }
+  commit?: Commit
+}
+export function info(url: string): Promise<InfoEntry[]>;
+export function info(urls: string[]): Promise<InfoEntry[]>;
+export function info(urls: (string | string[])) {
+  if (!Array.isArray(urls)) {
+    urls = [urls];
+  }
   return execute('info', {
-    params: [url],
+    params: urls,
     xml: true
-  }).then((data: any) => data.entry)
+  }).then((data: any) => {
+    var entries = data.entry;
+    if (!Array.isArray(entries)) {
+      entries = [entries];
+    }
+    return (<any[]>entries).map((item => {
+      var ret: InfoEntry = {
+        path: item.$.path,
+        revision: +item.$.revision,
+        url: item.url,
+        relativeUrl: item['relative-url'],
+        repository: {
+          root: item.repository.root,
+          uuid: item.repository.uuid
+        },
+        wcInfo: {
+          wcrootAbspath: item['wc-info']['wcroot-abspath'],
+          schedule: item['wc-info'].schedule,
+          depth: item['wc-info'].depth
+        }
+      };
+      if (item.commit) {
+        ret.commit = {
+          revision: +item.commit.$.revision,
+          author: item.commit.author,
+          date: item.commit.date
+        };
+      }
+      return ret;
+    }));
+  })
 }
-
-export function ls(url: string) {
+interface LsFile {
+  name: string
+  fullPath: string
+  type: 'file' | 'dir'
+  commit?: Commit
+}
+interface Ls {
+  path: string
+  files: LsFile[]
+}
+export function ls(url: string): Promise<Ls[]>;
+export function ls(urls: string[]): Promise<Ls[]>;
+export function ls(urls: string | string[]) {
+  if (!Array.isArray(urls)) {
+    urls = [urls];
+  }
   return execute('list', {
-    params: [url],
+    params: urls,
     xml: true
-  }).then((data: any) => data.list.entry.map((item: any) => ({
-    name: item.name,
-    url: data.list.$.path + '/' + item.name
-  })));
+  }).then((data: any) => {
+    var list: any[] = data.list;
+    if (!Array.isArray(list)) {
+      list = [list];
+    }
+    return list.map((item: any) => {
+      var entries: any[] = item.entry;
+      if (!Array.isArray(entries)) {
+        entries = [entries];
+      }
+      return {
+        path: item.$.path,
+        files: entries.map(entry => {
+          var ret: LsFile = {
+            name: entry.name,
+            fullPath: item.$.path + '/' + item.name,
+            type: entry.$.kind
+          };
+          if (entry.commit) {
+            ret.commit = {
+              revision: +entry.commit.$.revision,
+              author: entry.commit.author,
+              date: entry.commit.date
+            }
+          }
+          return ret;
+        })
+      }
+    });
+  });
 }
 
-export function log(url: string, limit?: number) {
+class LogEntry extends Commit {
+  msg: string
+}
+
+export function log(url: string | string[], limit?: number) {
   var params = [url];
   if (limit) {
     params.push(`-l ${limit}`);
@@ -275,12 +378,18 @@ export function log(url: string, limit?: number) {
   return execute('log', {
     params,
     xml: true
-  }).then((data: any) => data.logentry.map((entry: any) => ({
-    revision: entry.$.revision,
-    author: entry.author,
-    date: entry.date,
-    msg: entry.msg
-  })))
+  }).then((data: any) => {
+    var logentries: any[] = data.logentry;
+    if (!Array.isArray(logentries)) {
+      logentries = [];
+    }
+    return logentries.map((entry: any): LogEntry => ({
+      revision: entry.$.revision,
+      author: entry.author,
+      date: entry.date,
+      msg: entry.msg
+    }))
+  })
 }
 
 export function getBranches(url: string, projectName?: string) {

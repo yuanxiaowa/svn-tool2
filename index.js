@@ -59,12 +59,15 @@ async function execute(name, args = {}) {
     var ps = child_process_1.spawn('svn', params, opts);
     var [a, b] = await Promise.all([rStream(ps.stdout), rStream(ps.stderr)]);
     var v = a || b;
-    if (v) {
+    if (a) {
         if (args.xml) {
-            return xmlToJSON(v);
+            return xmlToJSON(a);
         }
     }
-    return v;
+    else if (b) {
+        throw b;
+    }
+    return a;
 }
 var getEntryPath = (item) => item.path;
 var isType = (type) => (item) => item.type === type;
@@ -123,86 +126,102 @@ var StatusType;
     StatusType[StatusType["missing"] = 2] = "missing";
     StatusType[StatusType["modified"] = 3] = "modified";
 })(StatusType || (StatusType = {}));
-async function status(cwd) {
+class StatusTarget {
+    constructor(path) {
+        this.path = path;
+    }
+}
+class Entry {
+}
+async function status(cwd, paths) {
     var data = await execute('status', {
         xml: true,
-        cwd
+        cwd,
+        params: paths
     });
-    var target = data.target;
-    var ret = [];
-    if (target.entry) {
-        let entry = target.entry;
-        if (!Array.isArray(entry)) {
-            entry = [entry];
-        }
-        ret = entry.map(item => {
-            var s = item['wc-status'];
-            var data = {
-                type: s.$.item,
-                path: item.$.path,
-                revision: +s.$.revision,
-                hasConflict: !!s.$['tree-conflicted']
-            };
-            if (s.commit) {
-                data.commit = {
-                    revision: s.commit.$.revision,
-                    author: s.commit.author,
-                    date: s.commit.date
-                };
-            }
-            return data;
-        });
+    var items = data.target;
+    if (!Array.isArray(items)) {
+        items = [items];
     }
-    return ret;
+    var sts = items.map(target => {
+        var ret = new StatusTarget(target.$.path);
+        var entries = target.entry;
+        if (entries) {
+            if (!Array.isArray(entries)) {
+                entries = [entries];
+            }
+            ret.entries = entries.map((item) => {
+                var s = item['wc-status'];
+                var data = {
+                    type: s.$.item,
+                    path: item.$.path,
+                    revision: +s.$.revision,
+                    hasConflict: !!s.$['tree-conflicted']
+                };
+                if (s.commit) {
+                    data.commit = {
+                        revision: +s.commit.$.revision,
+                        author: s.commit.author,
+                        date: s.commit.date
+                    };
+                }
+                return data;
+            });
+        }
+        return ret;
+    });
+    return sts;
 }
 exports.status = status;
-function resolve(items, cwd) {
-    if (items.length > 0) {
-        return execute('resolve', {
-            params: items,
-            accept: 'mine-full',
-            cwd
-        });
-    }
+function resolve(cwd, files, accept = 'mine-full') {
+    return execute('resolve', {
+        params: files,
+        accept,
+        cwd
+    });
 }
 exports.resolve = resolve;
-function add(items, cwd) {
+function add(cwd, paths) {
     return execute('add', {
-        params: items,
+        params: paths,
         cwd
     });
 }
 exports.add = add;
-function update(cwd) {
+function update(cwd, dirs) {
     return execute('update', {
         accept: 'mine-full',
-        cwd
+        cwd,
+        params: dirs
     });
 }
 exports.update = update;
-function del(items, cwd) {
-    if (items.length > 0) {
-        return execute('delete', {
-            params: items,
-            cwd
-        });
-    }
+function del(cwd, paths) {
+    return execute('delete', {
+        params: paths,
+        cwd
+    });
 }
 exports.del = del;
-function commit(msg = '~~~代码更新~~~', cwd, files) {
-    var params = [`-m "${msg}"`];
-    if (files && files.length > 0) {
-        params.push(...files);
-    }
+function commit(cwd, msg = '~~~代码更新~~~', files) {
+    var params = [`-m "${msg}"`, ...files];
     return execute('commit', {
         params,
         cwd
     });
 }
 exports.commit = commit;
-function merge(revisions, cwd) {
+function merge(cwd, url, revisions) {
+    var params;
+    if (typeof url === 'string') {
+        params = ['-c', revisions.join(','), url, '.'];
+    }
+    else {
+        url.push('.');
+        params = url;
+    }
     return execute('merge', {
-        params: revisions,
+        params,
         cwd
     });
 }
@@ -225,23 +244,89 @@ function getProjectDir(url, projectName) {
     return dir;
 }
 exports.getProjectDir = getProjectDir;
-function info(url) {
+class Commit {
+}
+function info(urls) {
+    if (!Array.isArray(urls)) {
+        urls = [urls];
+    }
     return execute('info', {
-        params: [url],
+        params: urls,
         xml: true
-    }).then((data) => data.entry);
+    }).then((data) => {
+        var entries = data.entry;
+        if (!Array.isArray(entries)) {
+            entries = [entries];
+        }
+        return entries.map((item => {
+            var ret = {
+                path: item.$.path,
+                revision: +item.$.revision,
+                url: item.url,
+                relativeUrl: item['relative-url'],
+                repository: {
+                    root: item.repository.root,
+                    uuid: item.repository.uuid
+                },
+                wcInfo: {
+                    wcrootAbspath: item['wc-info']['wcroot-abspath'],
+                    schedule: item['wc-info'].schedule,
+                    depth: item['wc-info'].depth
+                }
+            };
+            if (item.commit) {
+                ret.commit = {
+                    revision: +item.commit.$.revision,
+                    author: item.commit.author,
+                    date: item.commit.date
+                };
+            }
+            return ret;
+        }));
+    });
 }
 exports.info = info;
-function ls(url) {
+function ls(urls) {
+    if (!Array.isArray(urls)) {
+        urls = [urls];
+    }
     return execute('list', {
-        params: [url],
+        params: urls,
         xml: true
-    }).then((data) => data.list.entry.map((item) => ({
-        name: item.name,
-        url: data.list.$.path + '/' + item.name
-    })));
+    }).then((data) => {
+        var list = data.list;
+        if (!Array.isArray(list)) {
+            list = [list];
+        }
+        return list.map((item) => {
+            var entries = item.entry;
+            if (!Array.isArray(entries)) {
+                entries = [entries];
+            }
+            return {
+                path: item.$.path,
+                files: entries.map(entry => {
+                    var ret = {
+                        name: entry.name,
+                        fullPath: item.$.path + '/' + item.name,
+                        type: entry.$.kind
+                    };
+                    if (entry.commit) {
+                        ret.commit = {
+                            revision: +entry.commit.$.revision,
+                            author: entry.commit.author,
+                            date: entry.commit.date
+                        };
+                    }
+                    return ret;
+                })
+            };
+        });
+    });
 }
 exports.ls = ls;
+class LogEntry extends Commit {
+}
 function log(url, limit) {
     var params = [url];
     if (limit) {
@@ -250,12 +335,18 @@ function log(url, limit) {
     return execute('log', {
         params,
         xml: true
-    }).then((data) => data.logentry.map((entry) => ({
-        revision: entry.$.revision,
-        author: entry.author,
-        date: entry.date,
-        msg: entry.msg
-    })));
+    }).then((data) => {
+        var logentries = data.logentry;
+        if (!Array.isArray(logentries)) {
+            logentries = [];
+        }
+        return logentries.map((entry) => ({
+            revision: entry.$.revision,
+            author: entry.author,
+            date: entry.date,
+            msg: entry.msg
+        }));
+    });
 }
 exports.log = log;
 function getBranches(url, projectName) {
