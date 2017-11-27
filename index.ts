@@ -2,6 +2,7 @@
 import { parseString } from 'xml2js'
 import { spawn } from 'child_process'
 import { Readable } from 'stream'
+import { StatusTarget, Entry, Commit, InfoEntry, LsFile, Ls, LogPath, LogEntry } from './structures'
 
 function xmlToJSON(xml: string) {
   return new Promise((resolve, reject) => {
@@ -41,8 +42,10 @@ async function execute(name: string, args: any = {}) {
     opts.cwd = args.cwd;
     delete args.cwd;
   }
-  if (args.params) {
-    params.push(...args.params);
+  if ('params' in args) {
+    if (args.params != null) {
+      params.push(...args.params);
+    }
     delete args.params;
   }
   Object.keys(args).forEach(key => {
@@ -101,50 +104,40 @@ export class SVN {
     return log(this.dir);
   }
   resolve() {
-    return resolve(this.conflicts, this.dir);
+    return resolve(this.dir, this.conflicts);
   }
   add() {
-    return add(this.adds, this.dir);
+    return add(this.dir, this.adds);
   }
   update() {
     return update(this.dir);
   }
   del() {
     var items = this.deleteds.concat(this.missings);
-    return del(items, this.dir);
+    return del(this.dir, items);
   }
   commit(msg: string) {
     if (!this.hasChanges) {
       return;
     }
-    return commit(msg, this.dir);
+    return commit(this.dir, ['.'], msg);
   }
-  merge(revisions: string[]) {
-    return merge(revisions, this.dir);
+  merge(url: string, revisions: string[]): Promise<any>
+  merge(urls: string[]): Promise<any>
+  merge(urls: string[] | string, revisions?: string[]): Promise<any> {
+    // @ts-ignore
+    return merge(this.dir, urls, revisions);
   }
 }
-
-enum StatusType {
-  unversioned,
-  deleted,
-  missing,
-  modified
-}
-class StatusTarget {
-  constructor(public path: string) { }
-  entries?: Entry[]
-}
-class Entry {
-  type: StatusType
-  path: string
-  revision: number
-  hasConflict: boolean
-  commit?: Commit
+function unixPath(path: string) {
+  return path.replace(/\\/g, '/');
 }
 export async function status(cwd: string, paths?: string[]) {
+  if (!paths) {
+    paths = [cwd];
+  }
   var data: any = await execute('status', {
     xml: true,
-    cwd,
     params: paths
   });
   var items: any[] = data.target;
@@ -162,7 +155,7 @@ export async function status(cwd: string, paths?: string[]) {
         var s = item['wc-status'];
         var data: Entry = {
           type: s.$.item,
-          path: item.$.path,
+          path: unixPath(item.$.path.replace(ret.path, '')).substring(1),
           revision: +s.$.revision,
           hasConflict: !!s.$['tree-conflicted']
         };
@@ -175,7 +168,10 @@ export async function status(cwd: string, paths?: string[]) {
         }
         return data;
       })
+    } else {
+      ret.entries = [];
     }
+    ret.path = unixPath(ret.path);
     return ret;
   });
   return sts
@@ -213,7 +209,7 @@ export function del(cwd: string, paths: string[]) {
   })
 }
 
-export function commit(cwd: string, msg: string = '~~~代码更新~~~', files: string[]) {
+export function commit(cwd: string, files: string[], msg: string = '~~~代码更新~~~') {
   var params = [`-m "${msg}"`, ...files];
   return execute('commit', {
     params,
@@ -252,27 +248,6 @@ export function getProjectDir(url: string, projectName?: string) {
   }
   var dir = url.substring(0, i);
   return dir;
-}
-class Commit {
-  revision: number
-  author: string
-  date: string
-}
-interface InfoEntry {
-  path: string
-  revision: number
-  url: string
-  relativeUrl: string
-  repository: {
-    root: string
-    uuid: string
-  }
-  wcInfo: {
-    wcrootAbspath: string
-    schedule: string
-    depth: string
-  }
-  commit?: Commit
 }
 export function info(url: string): Promise<InfoEntry[]>;
 export function info(urls: string[]): Promise<InfoEntry[]>;
@@ -315,16 +290,6 @@ export function info(urls: (string | string[])) {
     }));
   })
 }
-interface LsFile {
-  name: string
-  fullPath: string
-  type: 'file' | 'dir'
-  commit?: Commit
-}
-interface Ls {
-  path: string
-  files: LsFile[]
-}
 export function ls(url: string): Promise<Ls[]>;
 export function ls(urls: string[]): Promise<Ls[]>;
 export function ls(urls: string | string[]) {
@@ -349,7 +314,7 @@ export function ls(urls: string | string[]) {
         files: entries.map(entry => {
           var ret: LsFile = {
             name: entry.name,
-            fullPath: item.$.path + '/' + item.name,
+            fullPath: item.$.path + '/' + entry.name,
             type: entry.$.kind
           };
           if (entry.commit) {
@@ -365,13 +330,8 @@ export function ls(urls: string | string[]) {
     });
   });
 }
-
-class LogEntry extends Commit {
-  msg: string
-}
-
-export function log(url: string | string[], limit?: number) {
-  var params = [url];
+export function log(url: string, limit?: number) {
+  var params = [url, '-v'];
   if (limit) {
     params.push(`-l ${limit}`);
   }
@@ -383,12 +343,23 @@ export function log(url: string | string[], limit?: number) {
     if (!Array.isArray(logentries)) {
       logentries = [];
     }
-    return logentries.map((entry: any): LogEntry => ({
-      revision: entry.$.revision,
-      author: entry.author,
-      date: entry.date,
-      msg: entry.msg
-    }))
+    return logentries.map((entry: any): LogEntry => {
+      var paths: any[] = entry.paths.path;
+      if (!Array.isArray(paths)) {
+        paths = [paths]
+      }
+      return {
+        revision: entry.$.revision,
+        author: entry.author,
+        date: entry.date,
+        msg: entry.msg,
+        paths: paths.map(item => ({
+          kind: item.$.kind,
+          action: item.$.action,
+          path: item._
+        }))
+      };
+    })
   })
 }
 

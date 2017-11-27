@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // @ts-ignore
 const xml2js_1 = require("xml2js");
 const child_process_1 = require("child_process");
+const structures_1 = require("./structures");
 function xmlToJSON(xml) {
     return new Promise((resolve, reject) => {
         xml2js_1.parseString(xml, {
@@ -40,8 +41,10 @@ async function execute(name, args = {}) {
         opts.cwd = args.cwd;
         delete args.cwd;
     }
-    if (args.params) {
-        params.push(...args.params);
+    if ('params' in args) {
+        if (args.params != null) {
+            params.push(...args.params);
+        }
         delete args.params;
     }
     Object.keys(args).forEach(key => {
@@ -96,47 +99,39 @@ class SVN {
         return log(this.dir);
     }
     resolve() {
-        return resolve(this.conflicts, this.dir);
+        return resolve(this.dir, this.conflicts);
     }
     add() {
-        return add(this.adds, this.dir);
+        return add(this.dir, this.adds);
     }
     update() {
         return update(this.dir);
     }
     del() {
         var items = this.deleteds.concat(this.missings);
-        return del(items, this.dir);
+        return del(this.dir, items);
     }
     commit(msg) {
         if (!this.hasChanges) {
             return;
         }
-        return commit(msg, this.dir);
+        return commit(this.dir, ['.'], msg);
     }
-    merge(revisions) {
-        return merge(revisions, this.dir);
+    merge(urls, revisions) {
+        // @ts-ignore
+        return merge(this.dir, urls, revisions);
     }
 }
 exports.SVN = SVN;
-var StatusType;
-(function (StatusType) {
-    StatusType[StatusType["unversioned"] = 0] = "unversioned";
-    StatusType[StatusType["deleted"] = 1] = "deleted";
-    StatusType[StatusType["missing"] = 2] = "missing";
-    StatusType[StatusType["modified"] = 3] = "modified";
-})(StatusType || (StatusType = {}));
-class StatusTarget {
-    constructor(path) {
-        this.path = path;
-    }
-}
-class Entry {
+function unixPath(path) {
+    return path.replace(/\\/g, '/');
 }
 async function status(cwd, paths) {
+    if (!paths) {
+        paths = [cwd];
+    }
     var data = await execute('status', {
         xml: true,
-        cwd,
         params: paths
     });
     var items = data.target;
@@ -144,7 +139,7 @@ async function status(cwd, paths) {
         items = [items];
     }
     var sts = items.map(target => {
-        var ret = new StatusTarget(target.$.path);
+        var ret = new structures_1.StatusTarget(target.$.path);
         var entries = target.entry;
         if (entries) {
             if (!Array.isArray(entries)) {
@@ -154,7 +149,7 @@ async function status(cwd, paths) {
                 var s = item['wc-status'];
                 var data = {
                     type: s.$.item,
-                    path: item.$.path,
+                    path: unixPath(item.$.path.replace(ret.path, '')).substring(1),
                     revision: +s.$.revision,
                     hasConflict: !!s.$['tree-conflicted']
                 };
@@ -168,6 +163,10 @@ async function status(cwd, paths) {
                 return data;
             });
         }
+        else {
+            ret.entries = [];
+        }
+        ret.path = unixPath(ret.path);
         return ret;
     });
     return sts;
@@ -203,7 +202,7 @@ function del(cwd, paths) {
     });
 }
 exports.del = del;
-function commit(cwd, msg = '~~~代码更新~~~', files) {
+function commit(cwd, files, msg = '~~~代码更新~~~') {
     var params = [`-m "${msg}"`, ...files];
     return execute('commit', {
         params,
@@ -244,8 +243,6 @@ function getProjectDir(url, projectName) {
     return dir;
 }
 exports.getProjectDir = getProjectDir;
-class Commit {
-}
 function info(urls) {
     if (!Array.isArray(urls)) {
         urls = [urls];
@@ -308,7 +305,7 @@ function ls(urls) {
                 files: entries.map(entry => {
                     var ret = {
                         name: entry.name,
-                        fullPath: item.$.path + '/' + item.name,
+                        fullPath: item.$.path + '/' + entry.name,
                         type: entry.$.kind
                     };
                     if (entry.commit) {
@@ -325,10 +322,8 @@ function ls(urls) {
     });
 }
 exports.ls = ls;
-class LogEntry extends Commit {
-}
 function log(url, limit) {
-    var params = [url];
+    var params = [url, '-v'];
     if (limit) {
         params.push(`-l ${limit}`);
     }
@@ -340,12 +335,23 @@ function log(url, limit) {
         if (!Array.isArray(logentries)) {
             logentries = [];
         }
-        return logentries.map((entry) => ({
-            revision: entry.$.revision,
-            author: entry.author,
-            date: entry.date,
-            msg: entry.msg
-        }));
+        return logentries.map((entry) => {
+            var paths = entry.paths.path;
+            if (!Array.isArray(paths)) {
+                paths = [paths];
+            }
+            return {
+                revision: entry.$.revision,
+                author: entry.author,
+                date: entry.date,
+                msg: entry.msg,
+                paths: paths.map(item => ({
+                    kind: item.$.kind,
+                    action: item.$.action,
+                    path: item._
+                }))
+            };
+        });
     });
 }
 exports.log = log;
