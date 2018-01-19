@@ -68,7 +68,7 @@ async function execute(name, args = {}) {
         }
     }
     else if (b) {
-        throw b;
+        throw new Error(b);
     }
     return a;
 }
@@ -213,7 +213,7 @@ exports.commit = commit;
 function merge(cwd, url, revisions) {
     var params;
     if (typeof url === 'string') {
-        params = ['-c', revisions.join(','), url, '.'];
+        params = ['-c', revisions.join(','), '--accept', 'tf', url];
     }
     else {
         url.push('.');
@@ -225,6 +225,14 @@ function merge(cwd, url, revisions) {
     });
 }
 exports.merge = merge;
+async function mergeinfo(cwd, url) {
+    var str = await execute('mergeinfo', {
+        params: ['--show-revs', 'merged', url],
+        cwd
+    });
+    return str.trim().split(/\r?\n/).map(r => Number(r.substring(1)));
+}
+exports.mergeinfo = mergeinfo;
 var pnames = ['trunk', 'branches', 'tags'];
 function getProjectDir(url, projectName) {
     var i = 0;
@@ -341,7 +349,7 @@ function log(url, limit) {
                 paths = [paths];
             }
             return {
-                revision: entry.$.revision,
+                revision: Number(entry.$.revision),
                 author: entry.author,
                 date: entry.date,
                 msg: entry.msg,

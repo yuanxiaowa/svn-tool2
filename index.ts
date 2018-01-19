@@ -35,7 +35,7 @@ function rStream(stream: Readable, isBuffer?: boolean): Promise<Buffer | string>
   })
 }
 
-async function execute(name: string, args: any = {}) {
+async function execute(name: string, args: any = {}): Promise<any> {
   var params = [name, '--non-interactive', '--trust-server-cert'];
   var opts: any = {};
   if (args.cwd) {
@@ -67,7 +67,7 @@ async function execute(name: string, args: any = {}) {
       return xmlToJSON(<string>a);
     }
   } else if (b) {
-    throw b;
+    throw new Error(<string>b);
   }
   return a;
 }
@@ -222,7 +222,7 @@ export function merge(cwd: string, urls: string[]): Promise<any>;
 export function merge(cwd: string, url: string | string[], revisions?: string[]): Promise<any> {
   var params: string[];
   if (typeof url === 'string') {
-    params = ['-c', (<string[]>revisions).join(','), url, '.'];
+    params = ['-c', (<string[]>revisions).join(','), '--accept', 'tf', url];
   } else {
     url.push('.');
     params = url;
@@ -231,6 +231,14 @@ export function merge(cwd: string, url: string | string[], revisions?: string[])
     params,
     cwd
   })
+}
+
+export async function mergeinfo(cwd: string, url: string) {
+  var str: string = await execute('mergeinfo', {
+    params: ['--show-revs', 'merged', url],
+    cwd
+  })
+  return str.trim().split(/\r?\n/).map(r => Number(r.substring(1)))
 }
 
 var pnames = ['trunk', 'branches', 'tags'];
@@ -349,7 +357,7 @@ export function log(url: string, limit?: number) {
         paths = [paths]
       }
       return {
-        revision: entry.$.revision,
+        revision: Number(entry.$.revision),
         author: entry.author,
         date: entry.date,
         msg: entry.msg,
