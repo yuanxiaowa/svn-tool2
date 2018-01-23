@@ -241,16 +241,19 @@ export async function mergeinfo(cwd: string, url: string) {
   return str.trim().split(/\r?\n/).map(r => Number(r.substring(1)))
 }
 
-var pnames = ['trunk', 'branches', 'tags'];
+var pnames = ['branches', 'tags'];
 export function getProjectDir(url: string, projectName?: string) {
   var i = 0;
   if (projectName) {
     i = url.indexOf('/' + projectName + '/') + projectName.length + 1;
   } else {
-    for (let name of pnames) {
-      i = url.indexOf('/' + name + '/');
-      if (i > -1) {
-        break;
+    i = url.indexOf('/trunk')
+    if (i === -1) {
+      for (let name of pnames) {
+        i = url.indexOf('/' + name + '/');
+        if (i > -1) {
+          break;
+        }
       }
     }
   }
