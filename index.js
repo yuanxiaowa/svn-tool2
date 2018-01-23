@@ -233,17 +233,20 @@ async function mergeinfo(cwd, url) {
     return str.trim().split(/\r?\n/).map(r => Number(r.substring(1)));
 }
 exports.mergeinfo = mergeinfo;
-var pnames = ['trunk', 'branches', 'tags'];
+var pnames = ['branches', 'tags'];
 function getProjectDir(url, projectName) {
     var i = 0;
     if (projectName) {
         i = url.indexOf('/' + projectName + '/') + projectName.length + 1;
     }
     else {
-        for (let name of pnames) {
-            i = url.indexOf('/' + name + '/');
-            if (i > -1) {
-                break;
+        i = url.indexOf('/trunk');
+        if (i === -1) {
+            for (let name of pnames) {
+                i = url.indexOf('/' + name + '/');
+                if (i > -1) {
+                    break;
+                }
             }
         }
     }
