@@ -213,7 +213,7 @@ exports.commit = commit;
 function merge(cwd, url, revisions) {
     var params;
     if (typeof url === 'string') {
-        params = ['-c', revisions.join(','), '--accept', 'tf', url];
+        params = ['-c', revisions.join(','), '--accept', 'theirs-full', url];
     }
     else {
         url.push('.');

@@ -222,7 +222,7 @@ export function merge(cwd: string, urls: string[]): Promise<any>;
 export function merge(cwd: string, url: string | string[], revisions?: string[]): Promise<any> {
   var params: string[];
   if (typeof url === 'string') {
-    params = ['-c', (<string[]>revisions).join(','), '--accept', 'tf', url];
+    params = ['-c', (<string[]>revisions).join(','), '--accept', 'theirs-full', url];
   } else {
     url.push('.');
     params = url;
