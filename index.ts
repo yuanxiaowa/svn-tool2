@@ -374,15 +374,17 @@ export function log(url: string, limit?: number) {
   })
 }
 
-export function getBranches(url: string, projectName?: string) {
-  return ls(getProjectDir(url, projectName) + '/branches');
+export async function getBranches(url: string, projectName?: string) {
+  var items = await ls(getProjectDir(url, projectName) + '/branches');
+  return items[0].files
 }
 
-export function getTags(url: string, projectName?: string) {
-  return ls(getProjectDir(url, projectName) + '/tags');
+export async function getTags(url: string, projectName?: string) {
+  var items = await ls(getProjectDir(url, projectName) + '/tags');
+  return items[0].files
 }
 
 export async function getTrunks(url: string, projectName?: string) {
   var items = await ls(getProjectDir(url, projectName));
-  return items.filter((item: any) => !['branches', 'tags'].includes(item.name));
+  return items[0].files.filter((item: any) => !pnames.includes(item.name));
 }

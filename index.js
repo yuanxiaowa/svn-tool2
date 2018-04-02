@@ -366,16 +366,18 @@ function log(url, limit) {
     });
 }
 exports.log = log;
-function getBranches(url, projectName) {
-    return ls(getProjectDir(url, projectName) + '/branches');
+async function getBranches(url, projectName) {
+    var items = await ls(getProjectDir(url, projectName) + '/branches');
+    return items[0].files;
 }
 exports.getBranches = getBranches;
-function getTags(url, projectName) {
-    return ls(getProjectDir(url, projectName) + '/tags');
+async function getTags(url, projectName) {
+    var items = await ls(getProjectDir(url, projectName) + '/tags');
+    return items[0].files;
 }
 exports.getTags = getTags;
 async function getTrunks(url, projectName) {
     var items = await ls(getProjectDir(url, projectName));
-    return items.filter((item) => !['branches', 'tags'].includes(item.name));
+    return items[0].files.filter((item) => !pnames.includes(item.name));
 }
 exports.getTrunks = getTrunks;
