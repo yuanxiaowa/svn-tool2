@@ -236,22 +236,39 @@ exports.mergeinfo = mergeinfo;
 var pnames = ['branches', 'tags'];
 function getProjectDir(url, projectName) {
     var i = 0;
+    var subdir = '';
     if (projectName) {
-        i = url.indexOf('/' + projectName + '/') + projectName.length + 1;
+        let str = '/' + projectName + '/';
+        i = url.indexOf(str) + str.length - 1;
+        let j = url.indexOf('/', i + str.length);
+        if (j > -1) {
+            subdir = url.substring(j);
+        }
     }
     else {
         i = url.indexOf('/trunk');
         if (i === -1) {
             for (let name of pnames) {
-                i = url.indexOf('/' + name + '/');
+                let str = '/' + name + '/';
+                i = url.indexOf(str);
                 if (i > -1) {
+                    let j = url.indexOf('/', i + str.length);
+                    if (j > -1) {
+                        subdir = url.substring(j);
+                    }
                     break;
                 }
             }
         }
+        else {
+            subdir = url.substring(i + '/trunk'.length);
+        }
     }
     var dir = url.substring(0, i);
-    return dir;
+    return {
+        dir,
+        subdir
+    };
 }
 exports.getProjectDir = getProjectDir;
 function info(urls) {
@@ -367,17 +384,29 @@ function log(url, limit) {
 }
 exports.log = log;
 async function getBranches(url, projectName) {
-    var items = await ls(getProjectDir(url, projectName) + '/branches');
-    return items[0].files;
+    var { dir, subdir } = getProjectDir(url, projectName);
+    var items = await ls(dir + '/branches');
+    return items[0].files.map(item => {
+        item.fullPath += subdir;
+        return item;
+    });
 }
 exports.getBranches = getBranches;
 async function getTags(url, projectName) {
-    var items = await ls(getProjectDir(url, projectName) + '/tags');
-    return items[0].files;
+    var { dir, subdir } = getProjectDir(url, projectName);
+    var items = await ls(dir + '/tags');
+    return items[0].files.map(item => {
+        item.fullPath += subdir;
+        return item;
+    });
 }
 exports.getTags = getTags;
 async function getTrunks(url, projectName) {
-    var items = await ls(getProjectDir(url, projectName));
-    return items[0].files.filter((item) => !pnames.includes(item.name));
+    var { dir, subdir } = getProjectDir(url, projectName);
+    var items = await ls(dir);
+    return items[0].files.filter((item) => !pnames.includes(item.name)).map(item => {
+        item.fullPath += subdir;
+        return item;
+    });
 }
 exports.getTrunks = getTrunks;

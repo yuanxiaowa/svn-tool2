@@ -244,21 +244,37 @@ export async function mergeinfo(cwd: string, url: string) {
 var pnames = ['branches', 'tags'];
 export function getProjectDir(url: string, projectName?: string) {
   var i = 0;
+  var subdir = ''
   if (projectName) {
-    i = url.indexOf('/' + projectName + '/') + projectName.length + 1;
+    let str = '/' + projectName + '/'
+    i = url.indexOf(str) + str.length - 1;
+    let j = url.indexOf('/', i + str.length)
+    if (j > -1) {
+      subdir = url.substring(j)
+    }
   } else {
     i = url.indexOf('/trunk')
     if (i === -1) {
       for (let name of pnames) {
-        i = url.indexOf('/' + name + '/');
+        let str = '/' + name + '/'
+        i = url.indexOf(str);
         if (i > -1) {
+          let j = url.indexOf('/', i + str.length)
+          if (j > -1) {
+            subdir = url.substring(j)
+          }
           break;
         }
       }
+    } else {
+      subdir = url.substring(i + '/trunk'.length)
     }
   }
   var dir = url.substring(0, i);
-  return dir;
+  return {
+    dir,
+    subdir
+  };
 }
 export function info(url: string): Promise<InfoEntry[]>;
 export function info(urls: string[]): Promise<InfoEntry[]>;
@@ -374,17 +390,30 @@ export function log(url: string, limit?: number) {
   })
 }
 
+
 export async function getBranches(url: string, projectName?: string) {
-  var items = await ls(getProjectDir(url, projectName) + '/branches');
-  return items[0].files
+  var { dir, subdir } = getProjectDir(url, projectName)
+  var items = await ls(dir + '/branches');
+  return items[0].files.map(item => {
+    item.fullPath += subdir
+    return item
+  })
 }
 
 export async function getTags(url: string, projectName?: string) {
-  var items = await ls(getProjectDir(url, projectName) + '/tags');
-  return items[0].files
+  var { dir, subdir } = getProjectDir(url, projectName)
+  var items = await ls(dir + '/tags');
+  return items[0].files.map(item => {
+    item.fullPath += subdir
+    return item
+  })
 }
 
 export async function getTrunks(url: string, projectName?: string) {
-  var items = await ls(getProjectDir(url, projectName));
-  return items[0].files.filter((item: any) => !pnames.includes(item.name));
+  var { dir, subdir } = getProjectDir(url, projectName)
+  var items = await ls(dir);
+  return items[0].files.filter((item: any) => !pnames.includes(item.name)).map(item => {
+    item.fullPath += subdir
+    return item
+  })
 }
